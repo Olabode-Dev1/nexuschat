@@ -1,0 +1,88 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    networks:
+      - nexus-network
+    environment:
+      POSTGRES_DB: nexuschat
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api-service:
+    build: ./api-service
+    networks:
+      - nexus-network
+    ports:
+      - "3001:3001"
+    restart: on-failure
+    environment:
+      DB_HOST: postgres       # service name, not localhost
+      DB_PORT: 5432
+      DB_NAME: nexuschat
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: nexussecret
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  chat-service:
+    build: ./chat-service
+    networks:
+      - nexus-network
+    ports:
+      - "3002:3002"
+    restart: on-failure
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: nexuschat
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: nexussecret
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    networks:
+      - nexus-network
+    ports:
+      - "3000:80"             # nginx inside listens on 80, we expose as 3000
+    environment:
+      REACT_APP_API_URL: http://localhost:3001
+      REACT_APP_CHAT_URL: http://localhost:3002
+    depends_on:
+      - api-service           # no healthcheck on these, so just service_started
+      - chat-service
+
+volumes:
+  postgres_data:              # named volume — survives container restarts
+
+networks:
+  nexus-network:
+    driver: bridge

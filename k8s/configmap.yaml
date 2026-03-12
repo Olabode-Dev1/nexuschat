@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nexuschat-config
+  namespace: nexuschat
+data:
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_NAME: nexuschat
+  DB_USER: postgres
+  REDIS_URL: redis://redis:6379
