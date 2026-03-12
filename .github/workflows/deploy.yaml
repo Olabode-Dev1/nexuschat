@@ -1,0 +1,82 @@
+name: Build and Deploy NexusChat
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+  EKS_CLUSTER: nexuschat
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1 - Checkout code
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Step 2 - Configure AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Step 3 - Login to ECR
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      # Step 4 - Build and push api-service
+      - name: Build and push api-service
+        run: |
+          docker build -t $ECR_REGISTRY/nexuschat-api-service:latest ./api-service
+          docker push $ECR_REGISTRY/nexuschat-api-service:latest
+
+      # Step 5 - Build and push chat-service
+      - name: Build and push chat-service
+        run: |
+          docker build -t $ECR_REGISTRY/nexuschat-chat-service:latest ./chat-service
+          docker push $ECR_REGISTRY/nexuschat-chat-service:latest
+
+      # Step 6 - Build and push frontend
+      - name: Build and push frontend
+        run: |
+          docker build -t $ECR_REGISTRY/nexuschat-frontend:latest ./frontend
+          docker push $ECR_REGISTRY/nexuschat-frontend:latest
+
+      # Step 7 - Update kubeconfig for EKS
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region $AWS_REGION --name $EKS_CLUSTER
+
+      # Step 8 - Deploy to EKS
+      - name: Deploy to EKS
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/secret.yaml
+          kubectl apply -f k8s/postgres/
+          kubectl apply -f k8s/redis/
+          kubectl apply -f k8s/api-service/
+          kubectl apply -f k8s/chat-service/
+          kubectl apply -f k8s/frontend/
+
+      # Step 9 - Restart deployments to pick up new images
+      - name: Restart deployments
+        run: |
+          kubectl rollout restart deployment/api-service -n nexuschat
+          kubectl rollout restart deployment/chat-service -n nexuschat
+          kubectl rollout restart deployment/frontend -n nexuschat
+
+      # Step 10 - Verify deployment
+      - name: Verify deployment
+        run: |
+          kubectl rollout status deployment/api-service -n nexuschat
+          kubectl rollout status deployment/chat-service -n nexuschat
+          kubectl rollout status deployment/frontend -n nexuschat
