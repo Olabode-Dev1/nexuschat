@@ -50,7 +50,7 @@ Browser
 
 ### Start the app
 ```bash
-git clone https://github.com/badmancarteer/nexuschat.git
+git clone https://github.com/Olabode-Dev1/nexuschat.git
 cd nexuschat
 docker compose up --build
 ```
